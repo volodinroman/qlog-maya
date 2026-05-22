@@ -4,6 +4,12 @@ from qlog_maya.pyside_wrapper import QtWidgets, QtCore, QtGui
 import qlog_maya.utils as utils
 
 CONFIG = utils.load_config()
+MESSAGE_TYPE_COLORS = {
+    om.MCommandMessage.kWarning: "#ffcc00",
+    om.MCommandMessage.kError: "#843333",
+    om.MCommandMessage.kResult: "#479047",
+}
+
 
 class TransparentHistoryText(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -70,12 +76,9 @@ class TransparentHistoryText(QtWidgets.QWidget):
 
         x = 4
         y = metrics.ascent() + 2
-        shadow_color = QtGui.QColor(0, 0, 0, 0)
 
         for text, color in visible_messages:
             elided = metrics.elidedText(text, QtCore.Qt.ElideRight, max(1, self.width() - 8))
-            painter.setPen(shadow_color)
-            painter.drawText(x + 1, y + 1, elided)
             painter.setPen(color)
             painter.drawText(x, y, elided)
             y += line_height
@@ -90,13 +93,11 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
         QtWidgets.QWidget.__init__(self, utils.get_maya_main_window())
         self.setObjectName(CONFIG["object_name"])
 
-        self.margin_left = CONFIG["margin_left"]
-        self.margin_top = CONFIG["margin_top"]
         self.callback_id = None
         self._drag_offset = None
 
         self.build_ui()
-        self.connect_signals()
+        self.message_received.connect(self.append_message)
         self.populate_existing_history()
         self.register_callback()
 
@@ -120,9 +121,6 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
         self.text_widget = TransparentHistoryText(self)
         self.main_layout.addWidget(self.text_widget)
 
-    def connect_signals(self):
-        self.message_received.connect(self.append_message)
-
     def populate_existing_history(self):
         history_lines = utils.get_script_editor_history_lines(CONFIG["history_limit"])
         for line in history_lines:
@@ -130,7 +128,10 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
 
     def position_at_viewport_top_left(self):
         viewport_x, viewport_y = utils.get_active_viewport_screen_position()
-        self.move(int(viewport_x) + self.margin_left, int(viewport_y) + self.margin_top)
+        self.move(
+            int(viewport_x) + CONFIG["margin_left"],
+            int(viewport_y) + CONFIG["margin_top"],
+        )
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -190,21 +191,15 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
             
     def _maya_output_callback(self, *args):
         if len(args) >= 2:
-            self.message_received.emit(args[0], args[1])
+            message, message_type = args[:2]
+            self.message_received.emit(message, message_type)
         
     def append_message(self, message, message_type):
         cleaned_msg = message.strip()
         if not cleaned_msg:
             return
-            
-        color = CONFIG["text_color"]
-        if message_type == om.MCommandMessage.kWarning:
-            color = "#ffcc00"
-        elif message_type == om.MCommandMessage.kError:
-            color = "#843333"
-        elif message_type == om.MCommandMessage.kResult:
-            color = "#479047"
-            
+
+        color = MESSAGE_TYPE_COLORS.get(message_type, CONFIG["text_color"])
         self.text_widget.append_colored_text(cleaned_msg, color)
 
     def get_message_color_from_text(self, text):

@@ -38,57 +38,40 @@ def get_asset_path(file_name):
 
 
 def get_script_editor_history_lines(limit):
-    text = get_script_editor_history_text()
-    if not text:
-        return []
-
-    lines = [line.strip() for line in text.splitlines()]
-    lines = [line for line in lines if line]
-    return lines[-limit:]
-
-
-def get_script_editor_history_text():
-    reporter_text = get_cmd_scroll_field_reporter_text()
-    if reporter_text:
-        return reporter_text
-
-    return get_script_editor_history_file_text()
-
-
-def get_cmd_scroll_field_reporter_text():
+    text = ""
     try:
         reporters = cmds.lsUI(type="cmdScrollFieldReporter") or []
     except Exception:
-        return ""
+        reporters = []
 
     texts = []
     for reporter in reporters:
         try:
-            text = cmds.cmdScrollFieldReporter(reporter, query=True, text=True)
+            reporter_text = cmds.cmdScrollFieldReporter(reporter, query=True, text=True)
         except Exception:
             continue
-        if text:
-            texts.append(text)
+        if reporter_text:
+            texts.append(reporter_text)
 
-    if not texts:
-        return ""
-    return max(texts, key=len)
+    if texts:
+        text = max(texts, key=len)
 
+    if not text:
+        try:
+            history_file = cmds.scriptEditorInfo(query=True, historyFilename=True)
+        except Exception:
+            history_file = None
 
-def get_script_editor_history_file_text():
-    try:
-        history_file = cmds.scriptEditorInfo(query=True, historyFilename=True)
-    except Exception:
-        return ""
+        if history_file and os.path.exists(history_file):
+            try:
+                with open(history_file, "r", encoding="utf-8", errors="replace") as file_stream:
+                    text = file_stream.read()
+            except Exception:
+                text = ""
 
-    if not history_file or not os.path.exists(history_file):
-        return ""
-
-    try:
-        with open(history_file, "r", encoding="utf-8", errors="replace") as file_stream:
-            return file_stream.read()
-    except Exception:
-        return ""
+    lines = [line.strip() for line in text.splitlines()]
+    lines = [line for line in lines if line]
+    return lines[-limit:]
 
 
 def is_live_widget(widget, object_name):
