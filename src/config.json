@@ -1,0 +1,17 @@
+{
+    "text_opacity": 0.85,
+    "width": 1200,
+    "height": 220,
+    "visible_lines": 10,
+    "history_limit": 200,
+    "margin_left": 15,
+    "margin_top": 15,
+    "background_color": [0, 0, 0, 10],
+    "text_color": "#000000",
+    "border_radius": 8,
+    "font_family": "Consolas",
+    "font_fallback_family": "Courier New",
+    "font_file": "JetBrainsMono-Regular.ttf",
+    "font_size": 8,
+    "object_name": "mayaHistoryOverlayWin"
+}
