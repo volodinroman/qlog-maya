@@ -3,7 +3,7 @@ import os
 
 import maya.OpenMayaUI as omui
 import maya.api.OpenMayaUI as omui_api
-from pyside_wrapper import QtWidgets, wrapInstance
+from qlog_maya.pyside_wrapper import QtWidgets, wrapInstance
 
 
 def load_config(file_path=None):

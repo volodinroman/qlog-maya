@@ -1,11 +1,8 @@
-import importlib
-
 import maya.OpenMaya as om
 import maya.cmds as cmds
-from pyside_wrapper import QtWidgets, QtCore, QtGui
-import utils
+from qlog_maya.pyside_wrapper import QtWidgets, QtCore, QtGui
+import qlog_maya.utils as utils
 
-utils = importlib.reload(utils)
 CONFIG = utils.load_config()
 
 class TransparentHistoryText(QtWidgets.QWidget):
