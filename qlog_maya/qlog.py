@@ -97,6 +97,7 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
 
         self.build_ui()
         self.connect_signals()
+        self.populate_existing_history()
         self.register_callback()
 
     def build_ui(self):
@@ -121,6 +122,11 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
 
     def connect_signals(self):
         self.message_received.connect(self.append_message)
+
+    def populate_existing_history(self):
+        history_lines = utils.get_script_editor_history_lines(CONFIG["history_limit"])
+        for line in history_lines:
+            self.text_widget.append_colored_text(line, self.get_message_color_from_text(line))
 
     def position_at_viewport_top_left(self):
         viewport_x, viewport_y = utils.get_active_viewport_screen_position()
@@ -191,7 +197,7 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
         if not cleaned_msg:
             return
             
-        color = QtGui.QColor(CONFIG["text_color"])
+        color = CONFIG["text_color"]
         if message_type == om.MCommandMessage.kWarning:
             color = "#ffcc00"
         elif message_type == om.MCommandMessage.kError:
@@ -200,6 +206,16 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
             color = "#479047"
             
         self.text_widget.append_colored_text(cleaned_msg, color)
+
+    def get_message_color_from_text(self, text):
+        lower_text = text.lower()
+        if "warning:" in lower_text:
+            return "#ffcc00"
+        if "error:" in lower_text or "traceback" in lower_text:
+            return "#843333"
+        if text.startswith("// Result:") or text.startswith("# Result:"):
+            return "#479047"
+        return CONFIG["text_color"]
 
     def closeEvent(self, event):
         self.remove_callback()
