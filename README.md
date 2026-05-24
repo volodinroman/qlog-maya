@@ -47,7 +47,7 @@ qlog-maya/
 
 ## Run
 
-Create a Python shelf button in Maya and use this command.
+Create a Python shelf button in Maya and use this command. First time you run it - it will show the qlog UI, second time click - it will close it (qlog UI doesn't have a close button)
 
 Change `PROJECT_ROOT` to your local repository path.
 
