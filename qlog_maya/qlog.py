@@ -4,10 +4,10 @@ from qlog_maya.pyside_wrapper import QtWidgets, QtCore, QtGui
 import qlog_maya.utils as utils
 
 CONFIG = utils.load_config()
-MESSAGE_TYPE_COLORS = {
-    om.MCommandMessage.kWarning: "#ffcc00",
-    om.MCommandMessage.kError: "#843333",
-    om.MCommandMessage.kResult: "#479047",
+MESSAGE_TYPE_NAMES = {
+    om.MCommandMessage.kWarning: "warning",
+    om.MCommandMessage.kError: "error",
+    om.MCommandMessage.kResult: "result",
 }
 
 
@@ -22,6 +22,7 @@ class TransparentHistoryText(QtWidgets.QWidget):
         self.messages = []
         self.max_lines = CONFIG["history_limit"]
         self.scroll_offset = 0
+        self.copied_text = None
         self.font = self.create_font()
 
     def create_font(self):
@@ -40,11 +41,11 @@ class TransparentHistoryText(QtWidgets.QWidget):
             font = QtGui.QFont(CONFIG["font_fallback_family"], font_size)
         return font
 
-    def append_colored_text(self, text, color):
+    def append_colored_text(self, text, color, message_type="info"):
         for line in text.splitlines():
             line = line.strip()
             if line:
-                self.messages.append((line, QtGui.QColor(color)))
+                self.messages.append((line, QtGui.QColor(color), message_type))
 
         if len(self.messages) > self.max_lines:
             self.messages = self.messages[-self.max_lines:]
@@ -70,15 +71,22 @@ class TransparentHistoryText(QtWidgets.QWidget):
         max_width = max(1, self.width() - 8)
         lines = []
 
-        for text, color in self.messages:
+        for text, color, message_type in self.messages:
+            if not self.is_message_type_visible(message_type):
+                continue
+
             if CONFIG.get("word_wrap", False):
                 for wrapped_line in self.wrap_text(text, metrics, max_width):
-                    lines.append((wrapped_line, color))
+                    lines.append((wrapped_line, color, message_type, text))
             else:
                 line = metrics.elidedText(text, QtCore.Qt.ElideRight, max_width)
-                lines.append((line, color))
+                lines.append((line, color, message_type, text))
 
         return lines
+
+    def is_message_type_visible(self, message_type):
+        filters = CONFIG.get("message_filters", {})
+        return filters.get(message_type, True)
 
     def wrap_text(self, text, metrics, max_width):
         wrapped_lines = []
@@ -121,6 +129,50 @@ class TransparentHistoryText(QtWidgets.QWidget):
 
         return lines
 
+    def get_painted_text_lines(self, metrics):
+        line_height = metrics.lineSpacing()
+        max_visible_lines = min(CONFIG["visible_lines"], max(1, self.height() // line_height))
+        text_lines = self.get_visible_text_lines(metrics)
+        end_index = len(text_lines) - self.scroll_offset
+        start_index = max(0, end_index - max_visible_lines)
+        return text_lines[start_index:end_index]
+
+    def copy_line_at(self, pos):
+        metrics = QtGui.QFontMetrics(self.font)
+        line_index = (pos.y() - 2) // metrics.lineSpacing()
+        visible_lines = self.get_painted_text_lines(metrics)
+
+        if line_index < 0 or line_index >= len(visible_lines):
+            return False
+
+        text, color, message_type, source_text = visible_lines[int(line_index)]
+        QtWidgets.QApplication.clipboard().setText(source_text)
+        self.show_copy_feedback(source_text)
+        return True
+
+    def show_copy_feedback(self, text):
+        if not CONFIG.get("copy_feedback", True):
+            return
+
+        self.copied_text = text
+        self.update()
+        QtCore.QTimer.singleShot(CONFIG.get("copy_feedback_duration_ms", 450), self.clear_copy_feedback)
+
+    def clear_copy_feedback(self):
+        self.copied_text = None
+        self.update()
+
+    def get_faded_color(self, color, index, line_count):
+        faded_opacity = max(0.0, min(1.0, CONFIG.get("faded_text_opacity", 0.35)))
+        if not CONFIG.get("message_fading", False) or line_count <= 1:
+            opacity = 1.0
+        else:
+            opacity = faded_opacity + ((1.0 - faded_opacity) * (float(index) / (line_count - 1)))
+
+        faded_color = QtGui.QColor(color)
+        faded_color.setAlphaF(opacity)
+        return faded_color
+
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.TextAntialiasing, True)
@@ -129,17 +181,22 @@ class TransparentHistoryText(QtWidgets.QWidget):
 
         metrics = QtGui.QFontMetrics(self.font)
         line_height = metrics.lineSpacing()
-        max_visible_lines = min(CONFIG["visible_lines"], max(1, self.height() // line_height))
-        text_lines = self.get_visible_text_lines(metrics)
-        end_index = len(text_lines) - self.scroll_offset
-        start_index = max(0, end_index - max_visible_lines)
-        visible_messages = text_lines[start_index:end_index]
+        visible_messages = self.get_painted_text_lines(metrics)
 
         x = 4
         y = metrics.ascent() + 2
 
-        for text, color in visible_messages:
-            painter.setPen(color)
+        for index, (text, color, message_type, source_text) in enumerate(visible_messages):
+            if source_text == self.copied_text:
+                feedback_rect = QtCore.QRect(
+                    0,
+                    y - metrics.ascent() - 1,
+                    self.width(),
+                    line_height,
+                )
+                painter.fillRect(feedback_rect, QtGui.QColor(*CONFIG["copy_feedback_color"]))
+
+            painter.setPen(self.get_faded_color(color, index, len(visible_messages)))
             painter.drawText(x, y, text)
             y += line_height
 
@@ -155,6 +212,7 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
 
         self.callback_id = None
         self._drag_offset = None
+        self._press_pos = None
 
         self.build_ui()
         self.message_received.connect(self.append_message)
@@ -184,7 +242,8 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
     def populate_existing_history(self):
         history_lines = utils.get_script_editor_history_lines(CONFIG["history_limit"])
         for line in history_lines:
-            self.text_widget.append_colored_text(line, self.get_message_color_from_text(line))
+            message_type = self.get_message_type_from_text(line)
+            self.text_widget.append_colored_text(line, self.get_message_color(message_type), message_type)
 
     def position_at_viewport_top_left(self):
         viewport_x, viewport_y = utils.get_active_viewport_screen_position()
@@ -212,6 +271,7 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
             self._drag_offset = event.globalPos() - self.frameGeometry().topLeft()
+            self._press_pos = event.globalPos()
             event.accept()
             return
         QtWidgets.QWidget.mousePressEvent(self, event)
@@ -225,7 +285,10 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton and self._drag_offset is not None:
+            if self.is_click(event) and CONFIG.get("click_to_copy", False):
+                self.copy_line_at(event.pos())
             self._drag_offset = None
+            self._press_pos = None
             event.accept()
             return
         QtWidgets.QWidget.mouseReleaseEvent(self, event)
@@ -259,18 +322,34 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
         if not cleaned_msg:
             return
 
-        color = MESSAGE_TYPE_COLORS.get(message_type, CONFIG["text_color"])
-        self.text_widget.append_colored_text(cleaned_msg, color)
+        message_type_name = MESSAGE_TYPE_NAMES.get(message_type, "info")
+        self.text_widget.append_colored_text(
+            cleaned_msg,
+            self.get_message_color(message_type_name),
+            message_type_name,
+        )
 
-    def get_message_color_from_text(self, text):
+    def get_message_type_from_text(self, text):
         lower_text = text.lower()
         if "warning:" in lower_text:
-            return "#ffcc00"
+            return "warning"
         if "error:" in lower_text or "traceback" in lower_text:
-            return "#843333"
+            return "error"
         if text.startswith("// Result:") or text.startswith("# Result:"):
-            return "#479047"
-        return CONFIG["text_color"]
+            return "result"
+        return "info"
+
+    def get_message_color(self, message_type):
+        return CONFIG.get("message_colors", {}).get(message_type, CONFIG["text_color"])
+
+    def is_click(self, event):
+        if self._press_pos is None:
+            return False
+        return (event.globalPos() - self._press_pos).manhattanLength() <= 3
+
+    def copy_line_at(self, pos):
+        text_pos = self.text_widget.mapFrom(self, pos)
+        self.text_widget.copy_line_at(text_pos)
 
     def closeEvent(self, event):
         self.remove_callback()

@@ -1,6 +1,24 @@
 {
     "text_opacity": 0.85,
     "word_wrap": true,
+    "click_to_copy": true,
+    "copy_feedback": true,
+    "copy_feedback_duration_ms": 100,
+    "copy_feedback_color": [0, 0, 0, 55],
+    "message_fading": true,
+    "faded_text_opacity": 0.35,
+    "message_filters": {
+        "info": true,
+        "warning": true,
+        "error": true,
+        "result": true
+    },
+    "message_colors": {
+        "info": "#000000",
+        "warning": "#ffcc00",
+        "error": "#843333",
+        "result": "#479047"
+    },
     "width": 1500,
     "height": 220,
     "visible_lines": 10,
