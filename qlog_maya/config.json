@@ -1,5 +1,6 @@
 {
     "text_opacity": 0.85,
+    "word_wrap": true,
     "width": 1500,
     "height": 220,
     "visible_lines": 10,

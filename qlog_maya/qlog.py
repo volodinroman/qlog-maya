@@ -57,9 +57,69 @@ class TransparentHistoryText(QtWidgets.QWidget):
             CONFIG["visible_lines"],
             max(1, self.height() // metrics.lineSpacing()),
         )
-        max_offset = max(0, len(self.messages) - visible_count)
+        max_offset = max(0, len(self.get_visible_text_lines(metrics)) - visible_count)
         self.scroll_offset = max(0, min(max_offset, self.scroll_offset + delta))
         self.update()
+
+    def text_width(self, metrics, text):
+        if hasattr(metrics, "horizontalAdvance"):
+            return metrics.horizontalAdvance(text)
+        return metrics.width(text)
+
+    def get_visible_text_lines(self, metrics):
+        max_width = max(1, self.width() - 8)
+        lines = []
+
+        for text, color in self.messages:
+            if CONFIG.get("word_wrap", False):
+                for wrapped_line in self.wrap_text(text, metrics, max_width):
+                    lines.append((wrapped_line, color))
+            else:
+                line = metrics.elidedText(text, QtCore.Qt.ElideRight, max_width)
+                lines.append((line, color))
+
+        return lines
+
+    def wrap_text(self, text, metrics, max_width):
+        wrapped_lines = []
+        current_line = ""
+
+        for word in text.split(" "):
+            candidate = word if not current_line else current_line + " " + word
+            if self.text_width(metrics, candidate) <= max_width:
+                current_line = candidate
+                continue
+
+            if current_line:
+                wrapped_lines.append(current_line)
+            current_line = ""
+
+            if self.text_width(metrics, word) <= max_width:
+                current_line = word
+            else:
+                wrapped_lines.extend(self.wrap_long_word(word, metrics, max_width))
+
+        if current_line:
+            wrapped_lines.append(current_line)
+
+        return wrapped_lines or [text]
+
+    def wrap_long_word(self, word, metrics, max_width):
+        lines = []
+        current_line = ""
+
+        for char in word:
+            candidate = current_line + char
+            if current_line and self.text_width(metrics, candidate) > max_width:
+                lines.append(current_line)
+                current_line = char
+            else:
+                current_line = candidate
+
+        if current_line:
+            lines.append(current_line)
+
+        return lines
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -70,17 +130,17 @@ class TransparentHistoryText(QtWidgets.QWidget):
         metrics = QtGui.QFontMetrics(self.font)
         line_height = metrics.lineSpacing()
         max_visible_lines = min(CONFIG["visible_lines"], max(1, self.height() // line_height))
-        end_index = len(self.messages) - self.scroll_offset
+        text_lines = self.get_visible_text_lines(metrics)
+        end_index = len(text_lines) - self.scroll_offset
         start_index = max(0, end_index - max_visible_lines)
-        visible_messages = self.messages[start_index:end_index]
+        visible_messages = text_lines[start_index:end_index]
 
         x = 4
         y = metrics.ascent() + 2
 
         for text, color in visible_messages:
-            elided = metrics.elidedText(text, QtCore.Qt.ElideRight, max(1, self.width() - 8))
             painter.setPen(color)
-            painter.drawText(x, y, elided)
+            painter.drawText(x, y, text)
             y += line_height
 
         painter.end()
