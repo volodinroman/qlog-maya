@@ -10,6 +10,7 @@ It shows Maya command output in a transparent overlay near the active viewport, 
 ## Features
 
 - Displays Maya command output in a viewport overlay.
+- Yes, you can scroll it, just hover your mouse over it.
 - Supports info, warning, error, and result colors.
 - Optional word wrap for long lines.
 - Optional message type filters.
