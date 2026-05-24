@@ -11,9 +11,9 @@ MESSAGE_TYPE_NAMES = {
 }
 
 
-class TransparentHistoryText(QtWidgets.QWidget):
+class TransparentHistoryTextUI(QtWidgets.QWidget):
     def __init__(self, parent=None):
-        super(TransparentHistoryText, self).__init__(parent)
+        super(TransparentHistoryTextUI, self).__init__(parent)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
         self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
@@ -76,6 +76,8 @@ class TransparentHistoryText(QtWidgets.QWidget):
                 continue
 
             if CONFIG.get("word_wrap", False):
+                # Keep the original text with each wrapped line so click-to-copy
+                # copies the full message, not only the clicked visual line.
                 for wrapped_line in self.wrap_text(text, metrics, max_width):
                     lines.append((wrapped_line, color, message_type, text))
             else:
@@ -113,6 +115,7 @@ class TransparentHistoryText(QtWidgets.QWidget):
         return wrapped_lines or [text]
 
     def wrap_long_word(self, word, metrics, max_width):
+        # Maya output often contains paths and traceback chunks without spaces.
         lines = []
         current_line = ""
 
@@ -145,7 +148,7 @@ class TransparentHistoryText(QtWidgets.QWidget):
         if line_index < 0 or line_index >= len(visible_lines):
             return False
 
-        text, color, message_type, source_text = visible_lines[int(line_index)]
+        source_text = visible_lines[int(line_index)][3]
         QtWidgets.QApplication.clipboard().setText(source_text)
         self.show_copy_feedback(source_text)
         return True
@@ -159,6 +162,9 @@ class TransparentHistoryText(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(CONFIG.get("copy_feedback_duration_ms", 450), self.clear_copy_feedback)
 
     def clear_copy_feedback(self):
+        if self.copied_text is None:
+            return
+
         self.copied_text = None
         self.update()
 
@@ -186,7 +192,7 @@ class TransparentHistoryText(QtWidgets.QWidget):
         x = 4
         y = metrics.ascent() + 2
 
-        for index, (text, color, message_type, source_text) in enumerate(visible_messages):
+        for index, (text, color, _message_type, source_text) in enumerate(visible_messages):
             if source_text == self.copied_text:
                 feedback_rect = QtCore.QRect(
                     0,
@@ -203,7 +209,7 @@ class TransparentHistoryText(QtWidgets.QWidget):
         painter.end()
 
 
-class MayaHistoryOverlay(QtWidgets.QWidget):
+class MayaHistoryOverlayUI(QtWidgets.QWidget):
     message_received = QtCore.Signal(str, int)
 
     def __init__(self):
@@ -232,12 +238,12 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
         self.resize(CONFIG["width"], CONFIG["height"])
         self.setCursor(QtCore.Qt.SizeAllCursor)
 
-        self.main_layout = QtWidgets.QHBoxLayout(self)
-        self.main_layout.setContentsMargins(8, 8, 8, 8)
-        self.main_layout.setSpacing(6)
+        main_layout = QtWidgets.QHBoxLayout(self)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(6)
         
-        self.text_widget = TransparentHistoryText(self)
-        self.main_layout.addWidget(self.text_widget)
+        self.text_widget = TransparentHistoryTextUI(self)
+        main_layout.addWidget(self.text_widget)
 
     def populate_existing_history(self):
         history_lines = utils.get_script_editor_history_lines(CONFIG["history_limit"])
@@ -285,6 +291,7 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton and self._drag_offset is not None:
+            # A small mouse move means "copy"; a real move means "drag window".
             if self.is_click(event) and CONFIG.get("click_to_copy", False):
                 self.copy_line_at(event.pos())
             self._drag_offset = None
@@ -300,9 +307,11 @@ class MayaHistoryOverlay(QtWidgets.QWidget):
         
     def register_callback(self):
         try:
+            # Maya may emit command output outside normal Qt input handling.
+            # The signal keeps widget updates on the Qt side.
             self.callback_id = om.MCommandMessage.addCommandOutputCallback(self._maya_output_callback, None)
         except Exception as e:
-            cmds.warning("Не удалось зарегистрировать HUD логгер: {}".format(e))
+            cmds.warning("Failed to register HUD logger: {}".format(e))
             
     def remove_callback(self):
         if self.callback_id is not None:
@@ -363,7 +372,7 @@ def run():
         existing_overlay.deleteLater()
         return None
 
-    overlay = MayaHistoryOverlay()
+    overlay = MayaHistoryOverlayUI()
     overlay.show()
     QtWidgets.QApplication.processEvents()
     overlay.position_at_viewport_top_left()

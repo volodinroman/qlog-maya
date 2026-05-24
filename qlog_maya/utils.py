@@ -8,10 +8,11 @@ from qlog_maya.pyside_wrapper import QtWidgets, wrapInstance
 
 
 def load_config(file_path=None):
+    """Load qlog settings from JSON."""
     if file_path is None:
         file_path = os.path.join(os.path.dirname(__file__), "config.json")
 
-    with open(file_path, "r") as config_file:
+    with open(file_path, "r", encoding="utf-8") as config_file:
         return json.load(config_file)
 
 
@@ -38,6 +39,7 @@ def get_asset_path(file_name):
 
 
 def get_script_editor_history_lines(limit):
+    """Return the last visible Script Editor history lines when Maya exposes them."""
     text = ""
     try:
         reporters = cmds.lsUI(type="cmdScrollFieldReporter") or []
@@ -57,6 +59,7 @@ def get_script_editor_history_lines(limit):
         text = max(texts, key=len)
 
     if not text:
+        # The reporter does not always exist when Script Editor is closed.
         try:
             history_file = cmds.scriptEditorInfo(query=True, historyFilename=True)
         except Exception:
