@@ -4,6 +4,9 @@
 
 It shows Maya command output in a transparent overlay near the active viewport, so warnings, errors, results, and info messages can be seen without keeping Script Editor open.
 
+<img width="1600" height="376" alt="image" src="https://github.com/user-attachments/assets/dbcd846c-4969-4946-8f36-e060c307d635" />
+
+
 ## Features
 
 - Displays Maya command output in a viewport overlay.
